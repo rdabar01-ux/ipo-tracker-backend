@@ -270,6 +270,52 @@ def get_quote(symbol):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+def yahoo_search_symbol(name):
+    """Company naam -> NSE/BSE symbol, Yahoo ke search API se (no key)."""
+    key = "resolve:" + name.lower()
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    # naam saaf karo: "Ltd."/"Limited" hata do, taaki match behtar ho
+    q = re.sub(r"\b(limited|ltd\.?|pvt\.?|private)\b", "", name, flags=re.I).strip(" .,")
+    api = ("https://query1.finance.yahoo.com/v1/finance/search?q="
+           + requests.utils.quote(q) + "&quotesCount=8&newsCount=0&listsCount=0")
+    out = {"symbol": None}
+    try:
+        r = requests.get(api, headers=HEADERS, timeout=12)
+        if r.status_code == 200:
+            quotes = r.json().get("quotes", [])
+            pick = None
+            # pehle NSE (.NS / exchange NSI), fir BSE (.BO)
+            for suf, exch in ((".NS", "NSI"), (".BO", "BSE")):
+                for it in quotes:
+                    sym = it.get("symbol", "")
+                    if sym.endswith(suf) or it.get("exchange") == exch:
+                        pick = it
+                        break
+                if pick:
+                    break
+            if pick:
+                out = {
+                    "symbol": pick["symbol"].rsplit(".", 1)[0],   # bina .NS/.BO ke
+                    "yahoo": pick["symbol"],
+                    "match": pick.get("shortname") or pick.get("longname"),
+                    "exchange": pick.get("exchange"),
+                }
+    except requests.RequestException:
+        pass
+    _cache_set(key, out)
+    return out
+
+
+@app.get("/resolve")
+def resolve():
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    return jsonify(yahoo_search_symbol(name))
+
+
 @app.get("/health")
 def health():
     return jsonify({"ok": True, "time": dt.datetime.utcnow().isoformat()})
