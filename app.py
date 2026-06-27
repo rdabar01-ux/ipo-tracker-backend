@@ -381,6 +381,23 @@ def _num(s):
         return None
 
 
+def _classify_shp(label):
+    l = label.lower()
+    if l.startswith("promoter"):
+        return "promoters"
+    if l.startswith("fii"):
+        return "fii"
+    if l.startswith("dii"):
+        return "dii"
+    if l.startswith("govern") or l.startswith("govt"):
+        return "government"
+    if l.startswith("public"):
+        return "public"
+    if "shareholder" in l:
+        return "shareholders"
+    return None
+
+
 def _parse_shareholding(html):
     """Screener ke shareholding section se latest quarter ka full breakdown."""
     m = re.search(r'id="quarterly-shp"(.*?)</table>', html, re.S)
@@ -396,21 +413,23 @@ def _parse_shareholding(html):
         ths = re.findall(r"<th[^>]*>(.*?)</th>", th.group(1), re.S)
         if ths:
             date = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", ths[-1])).strip() or None
-    label_map = {
-        "promoters": "promoters", "fiis": "fii", "fii": "fii",
-        "diis": "dii", "dii": "dii", "government": "government",
-        "public": "public", "no. of shareholders": "shareholders",
-    }
     out = {}
     for r in re.findall(r"<tr[^>]*>(.*?)</tr>", block, re.S):
         tds = re.findall(r"<td[^>]*>(.*?)</td>", r, re.S)
         if len(tds) < 2:
             continue
-        label = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", tds[0])).strip().rstrip("+").strip().lower()
-        key = label_map.get(label)
+        label = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", tds[0])).strip()
+        key = _classify_shp(label)
         if not key:
             continue
-        out[key] = _num(re.sub("<[^>]+>", "", tds[-1]))
+        # latest quarter = aakhri cell jisme number ho
+        val = None
+        for cell in reversed(tds[1:]):
+            n = _num(re.sub("<[^>]+>", "", cell))
+            if n is not None:
+                val = n
+                break
+        out[key] = val
     return (out or None), date
 
 
