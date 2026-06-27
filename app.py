@@ -364,6 +364,8 @@ def get_detail(symbol):
         out["sectorFull"] = sc["sector"]
     if sc.get("name"):
         out["name"] = sc["name"]
+    out["shareholding"] = sc.get("shareholding")
+    out["shareholdingDate"] = sc.get("shareholdingDate")
     out["hasScreener"] = bool(sc)
     _cache_set(f"detail:{symbol.upper()}", out)
     return out
@@ -377,6 +379,39 @@ def _num(s):
         return float(s) if s not in ("", ".", "-") else None
     except ValueError:
         return None
+
+
+def _parse_shareholding(html):
+    """Screener ke shareholding section se latest quarter ka full breakdown."""
+    m = re.search(r'id="quarterly-shp"(.*?)</table>', html, re.S)
+    if not m:
+        m = re.search(r'id="shareholding"(.*?)</table>', html, re.S)
+    if not m:
+        return None, None
+    block = m.group(1)
+    # latest quarter label (thead ka aakhri <th>)
+    date = None
+    th = re.search(r"<thead>(.*?)</thead>", block, re.S)
+    if th:
+        ths = re.findall(r"<th[^>]*>(.*?)</th>", th.group(1), re.S)
+        if ths:
+            date = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", ths[-1])).strip() or None
+    label_map = {
+        "promoters": "promoters", "fiis": "fii", "fii": "fii",
+        "diis": "dii", "dii": "dii", "government": "government",
+        "public": "public", "no. of shareholders": "shareholders",
+    }
+    out = {}
+    for r in re.findall(r"<tr[^>]*>(.*?)</tr>", block, re.S):
+        tds = re.findall(r"<td[^>]*>(.*?)</td>", r, re.S)
+        if len(tds) < 2:
+            continue
+        label = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", tds[0])).strip().rstrip("+").strip().lower()
+        key = label_map.get(label)
+        if not key:
+            continue
+        out[key] = _num(re.sub("<[^>]+>", "", tds[-1]))
+    return (out or None), date
 
 
 def scrape_screener(symbol):
@@ -436,6 +471,9 @@ def scrape_screener(symbol):
     h1 = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.S)
     if h1:
         out["name"] = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", h1.group(1))).strip()
+    sh, sh_date = _parse_shareholding(html)
+    out["shareholding"] = sh
+    out["shareholdingDate"] = sh_date
     _cache_set(key, out)
     return out
 
