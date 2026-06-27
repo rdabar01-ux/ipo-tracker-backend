@@ -348,7 +348,95 @@ def get_detail(symbol):
         "institutionsPct": _raw(mh.get("institutionsPercentHeld")),
         "currency": pr.get("currency", "INR"),
     })
+
+    # 3) Screener.in — India ke liye behtar (market cap ₹Cr, ROE/ROCE, promoter holding)
+    sc = scrape_screener(symbol) or {}
+    if sc.get("marketCapCr") is not None:
+        out["marketCap"] = sc["marketCapCr"] * 1e7        # Cr -> rupees (Yahoo jaisa unit)
+    for src, dst in (("pe", "peRatio"), ("bookValue", "bookValue"), ("high", "fiftyTwoWeekHigh"),
+                     ("low", "fiftyTwoWeekLow")):
+        if sc.get(src) is not None:
+            out[dst] = sc[src]
+    for f in ("roe", "roce", "promoterHolding", "dividendYield", "faceValue"):
+        if sc.get(f) is not None:
+            out[f] = sc[f]
+    if sc.get("sector"):
+        out["sectorFull"] = sc["sector"]
+    if sc.get("name"):
+        out["name"] = sc["name"]
+    out["hasScreener"] = bool(sc)
     _cache_set(f"detail:{symbol.upper()}", out)
+    return out
+
+
+def _num(s):
+    if s is None:
+        return None
+    s = re.sub(r"[^0-9.\-]", "", str(s))
+    try:
+        return float(s) if s not in ("", ".", "-") else None
+    except ValueError:
+        return None
+
+
+def scrape_screener(symbol):
+    """Screener.in company page (server-rendered) se fundamentals + promoter holding."""
+    key = "screener:" + symbol.upper()
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    sess = requests.Session()
+    sess.headers.update(HEADERS)
+    out = {}
+    html = ""
+    for path in ("/company/%s/consolidated/" % symbol.upper(), "/company/%s/" % symbol.upper()):
+        try:
+            r = sess.get("https://www.screener.in" + path,
+                         headers={"Referer": "https://www.screener.in/"}, timeout=15)
+            if r.status_code == 200 and 'id="top-ratios"' in r.text:
+                html = r.text
+                break
+        except requests.RequestException:
+            continue
+    if not html:
+        _cache_set(key, out)
+        return out
+    # top-ratios list: har <li> me ek "name" aur ek-do "number"
+    block = re.search(r'id="top-ratios"(.*?)</ul>', html, re.S)
+    ratios = {}
+    if block:
+        for li in re.findall(r"<li[^>]*>(.*?)</li>", block.group(1), re.S):
+            nm = re.search(r'class="name">(.*?)</span>', li, re.S)
+            nums = re.findall(r'class="number">(.*?)</span>', li, re.S)
+            if nm:
+                name = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", nm.group(1))).strip()
+                ratios[name] = [_num(x) for x in nums]
+
+    def g(name, i=0):
+        v = ratios.get(name)
+        return v[i] if v and i < len(v) and v[i] is not None else None
+
+    out["marketCapCr"] = g("Market Cap")
+    out["current"] = g("Current Price")
+    out["high"] = g("High / Low", 0)
+    out["low"] = g("High / Low", 1)
+    out["pe"] = g("Stock P/E")
+    out["bookValue"] = g("Book Value")
+    out["dividendYield"] = g("Dividend Yield")
+    out["roce"] = g("ROCE")
+    out["roe"] = g("ROE")
+    out["faceValue"] = g("Face Value")
+    # promoter holding meta-description me reliable hota hai
+    pm = re.search(r"Promoter Holding:\s*([\d.]+)\s*%", html)
+    out["promoterHolding"] = float(pm.group(1)) if pm else None
+    # sector breadcrumb
+    secs = re.findall(r'title="(?:Broad Sector|Sector|Broad Industry|Industry)"[^>]*>(.*?)</a>',
+                      html, re.S)
+    out["sector"] = " · ".join(re.sub("<[^>]+>", "", s).strip() for s in secs) or None
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.S)
+    if h1:
+        out["name"] = re.sub(r"\s+", " ", re.sub("<[^>]+>", "", h1.group(1))).strip()
+    _cache_set(key, out)
     return out
 
 
