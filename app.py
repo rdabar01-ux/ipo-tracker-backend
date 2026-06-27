@@ -19,13 +19,16 @@ khaali ya galat aaye, to neeche SOURCES ke URL / column-matching tweak karna pad
 README me isay fix karne ke steps diye hain.
 """
 
+import io
+import json
+import os
 import re
 import time
 import datetime as dt
 from html.parser import HTMLParser
 
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -625,12 +628,44 @@ def debug():
     return jsonify(out)
 
 
+STATE_FILE = os.path.join(os.path.dirname(__file__), "state.json")
+
+
 @app.get("/")
 def home():
+    # agar index.html repo me hai to app serve karo, warna service info
+    idx = os.path.join(os.path.dirname(__file__), "index.html")
+    if os.path.exists(idx):
+        return send_file(idx)
     return jsonify({
         "service": "IPO Cross Tracker API",
-        "endpoints": ["/health", "/ipos?type=all", "/quote?symbol=XYZ"],
+        "endpoints": ["/health", "/quote?symbol=XYZ", "/resolve?name=...",
+                      "/detail?symbol=XYZ", "/screener?symbol=XYZ", "/state"],
     })
+
+
+@app.get("/state")
+def get_state():
+    """Saved watchlist state (cross-device sync ke liye)."""
+    try:
+        with open(STATE_FILE) as f:
+            return jsonify({"ok": True, "state": json.load(f)})
+    except (OSError, ValueError):
+        return jsonify({"ok": True, "state": None})
+
+
+@app.post("/state")
+def set_state():
+    """Watchlist state save karo. Body = pura state JSON."""
+    data = request.get_json(silent=True)
+    if data is None:
+        return jsonify({"ok": False, "error": "invalid json"}), 400
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(data, f)
+        return jsonify({"ok": True, "savedAt": dt.datetime.utcnow().isoformat()})
+    except OSError as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

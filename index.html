@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IPO Cross Watch</title>
+<style>
+  :root{
+    --canvas:#EAECF1; --surface:#FFFFFF; --ink:#171B22; --muted:#6B7280;
+    --line:#E2E5EB; --line2:#EFF1F5;
+    --amber:#B5750A; --amber-bg:#FBF1D8; --amber-line:#E8B73F;
+    --green:#0F7C43; --green-bg:#E2F3E8;
+    --slate:#5B6573; --slate-bg:#EDEFF3;
+    --blue:#2B5CCB; --blue-bg:#E7EDFB;
+    --rose:#B23A2C; --rose-bg:#F8E7E4;
+    --brand:#262338;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --radius:12px; --shadow:0 1px 2px rgba(20,24,32,.06),0 8px 24px -16px rgba(20,24,32,.25);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--canvas);color:var(--ink);font-family:var(--sans);
+    font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;padding:0 0 64px}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--muted)}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* header */
+  header.top{background:var(--brand);color:#fff;padding:22px 0 24px;
+    border-bottom:3px solid #14121f}
+  .top .wrap{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brandblock h1{margin:0;font-size:23px;letter-spacing:-.01em;font-weight:650}
+  .brandblock .eyebrow{color:#A8A4C2;margin-bottom:7px}
+  .brandblock p{margin:5px 0 0;color:#BBB7D2;font-size:12.5px;max-width:52ch}
+  .top-actions{display:flex;align-items:center;gap:10px}
+  .apistate{display:flex;align-items:center;gap:7px;font-family:var(--mono);
+    font-size:11px;color:#BBB7D2}
+  .dot{width:8px;height:8px;border-radius:50%;background:#6B6786}
+  .dot.live{background:#34D17E;box-shadow:0 0 0 3px rgba(52,209,126,.2)}
+  .dot.err{background:#E8705B}
+
+  /* buttons */
+  button{font-family:var(--sans);cursor:pointer;border:1px solid transparent;
+    border-radius:9px;font-size:13px;font-weight:560;padding:8px 13px;transition:.12s}
+  .btn-ghost{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.18)}
+  .btn-ghost:hover{background:rgba(255,255,255,.16)}
+  .btn{background:var(--surface);color:var(--ink);border-color:var(--line)}
+  .btn:hover{border-color:#C9CDD6;background:#FCFCFD}
+  .btn-primary{background:var(--brand);color:#fff}
+  .btn-primary:hover{background:#332e4d}
+  .btn-sm{padding:5px 9px;font-size:12px}
+  button:disabled{opacity:.5;cursor:not-allowed}
+
+  /* stat strip */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:-26px 0 18px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px;box-shadow:var(--shadow)}
+  .stat .eyebrow{margin-bottom:9px}
+  .stat .v{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1;
+    font-variant-numeric:tabular-nums}
+  .stat.hero{background:var(--amber-bg);border-color:var(--amber-line)}
+  .stat.hero .v{color:var(--amber)}
+  .stat.hero .eyebrow{color:var(--amber)}
+  .stat .sub{font-size:11px;color:var(--muted);margin-top:5px}
+
+  /* controls */
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);
+    border-radius:9px;overflow:hidden}
+  .seg button{border:none;border-radius:0;background:transparent;color:var(--muted);
+    padding:7px 12px;font-size:12.5px}
+  .seg button.on{background:var(--ink);color:#fff}
+  .search{flex:1;min-width:150px;display:flex;align-items:center;gap:8px;background:var(--surface);
+    border:1px solid var(--line);border-radius:9px;padding:0 11px}
+  .search input{border:none;outline:none;background:transparent;padding:9px 0;width:100%;
+    font-size:13px;color:var(--ink);font-family:var(--sans)}
+  .thresh{display:flex;align-items:center;gap:9px;background:var(--surface);
+    border:1px solid var(--line);border-radius:9px;padding:6px 12px}
+  .thresh label{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .thresh .tval{font-family:var(--mono);font-weight:600;color:var(--amber);min-width:34px;text-align:right}
+  input[type=range]{accent-color:var(--amber)}
+
+  /* table */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden}
+  .tablescroll{overflow:auto;max-height:calc(100vh - 24px)}
+  table{width:100%;border-collapse:collapse;min-width:940px}
+  thead th{text-align:left;padding:11px 14px;font-family:var(--mono);font-size:10px;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+    border-bottom:1px solid var(--line);background:#FAFBFC;white-space:nowrap;cursor:pointer;user-select:none;
+    position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--line)}
+  thead th.right{text-align:right}
+  thead th .arrow{opacity:.5;font-size:9px}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--line2);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#FBFBFC;cursor:pointer}
+  tr.near{box-shadow:inset 3px 0 0 var(--amber)}
+  tr.crossed{box-shadow:inset 3px 0 0 var(--green)}
+  /* comeback: fell below issue, now near/crossing back — strongest highlight */
+  tr.cb-near>td{background:var(--amber-bg)}
+  tr.cb-crossed>td{background:var(--green-bg)}
+  tr.cb-near>td:first-child{box-shadow:inset 4px 0 0 var(--amber)}
+  tr.cb-crossed>td:first-child{box-shadow:inset 4px 0 0 var(--green)}
+  .cbmark{color:var(--amber);font-weight:700;margin-right:5px}
+  tr.cb-crossed .cbmark{color:var(--green)}
+  .company{font-weight:580;letter-spacing:-.005em}
+  .sym{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+  .sym.missing{color:var(--rose)}
+  .sym.auto{color:var(--amber);border-bottom:1px dotted var(--amber-line);display:inline-block}
+  .price{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-size:13.5px}
+  .pct{font-family:var(--mono);font-size:11.5px;font-weight:600}
+  .pct.pos{color:var(--green)} .pct.neg{color:var(--rose)}
+  .tag{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+    text-transform:uppercase;padding:2px 6px;border-radius:5px;font-weight:600}
+  .tag.mainboard{background:var(--blue-bg);color:var(--blue)}
+  .tag.sme{background:#F0EAF7;color:#7A4FB0}
+
+  /* status badge */
+  .badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+    font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    padding:4px 8px;border-radius:6px;white-space:nowrap}
+  .badge .b-dot{width:6px;height:6px;border-radius:50%}
+  .b-near{background:var(--amber-bg);color:var(--amber)} .b-near .b-dot{background:var(--amber)}
+  .b-crossed{background:var(--green-bg);color:var(--green)} .b-crossed .b-dot{background:var(--green)}
+  .b-below{background:var(--slate-bg);color:var(--slate)} .b-below .b-dot{background:var(--slate)}
+  .b-above{background:var(--blue-bg);color:var(--blue)} .b-above .b-dot{background:var(--blue)}
+  .b-unknown{background:#F4F4F6;color:#9AA0A8} .b-unknown .b-dot{background:#C4C8CF}
+
+  /* signature crossing gauge */
+  .gauge{width:148px}
+  .gtrack{position:relative;height:22px;border-radius:6px;
+    background:linear-gradient(90deg,var(--rose-bg),#FBF6E8 46%,#FBF1D8 50%,#EAF5EE 54%,var(--green-bg));
+    border:1px solid var(--line)}
+  .gmid{position:absolute;top:-2px;bottom:-2px;left:50%;width:2px;background:var(--ink);
+    transform:translateX(-50%);opacity:.55}
+  .gmid::after{content:"ISSUE";position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    font-family:var(--mono);font-size:7.5px;letter-spacing:.08em;color:var(--muted)}
+  .gmark{position:absolute;top:50%;width:11px;height:11px;border-radius:50%;
+    border:2px solid #fff;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .gmark.near{background:var(--amber);animation:pulse 1.4s ease-in-out infinite}
+  .gmark.crossed{background:var(--green)}
+  .gmark.below{background:var(--slate)} .gmark.above{background:var(--blue)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(181,117,10,.45)}50%{box-shadow:0 0 0 6px rgba(181,117,10,0)}}
+  @media (prefers-reduced-motion:reduce){.gmark.near{animation:none}}
+  .gauge .glabel{font-family:var(--mono);font-size:10px;text-align:center;margin-top:4px;color:var(--muted)}
+
+  .rowacts{display:flex;gap:5px;justify-content:flex-end}
+  .iconbtn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:4px 7px;
+    font-size:11px;color:var(--muted)}
+  .iconbtn:hover{color:var(--ink);border-color:#C9CDD6}
+  .iconbtn.del:hover{color:var(--rose);border-color:#E7B3AC}
+
+  /* empty */
+  .empty{padding:54px 20px;text-align:center}
+  .empty h3{margin:0 0 6px;font-size:16px}
+  .empty p{margin:0 0 18px;color:var(--muted)}
+  .empty .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+  /* modal */
+  .scrim{position:fixed;inset:0;background:rgba(23,27,34,.45);display:none;
+    align-items:center;justify-content:center;padding:20px;z-index:50}
+  .scrim.open{display:flex}
+  .modal{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);
+    width:100%;max-width:460px;max-height:90vh;overflow:auto}
+  .modal header{display:flex;justify-content:space-between;align-items:center;
+    padding:16px 18px;border-bottom:1px solid var(--line)}
+  .modal header h2{margin:0;font-size:15px}
+  .modal .body{padding:18px}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;
+    font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase}
+  .field input,.field select{width:100%;border:1px solid var(--line);border-radius:8px;
+    padding:9px 11px;font-size:13px;font-family:var(--sans);outline:none;background:#fff;color:var(--ink)}
+  .field input:focus,.field select:focus{border-color:var(--brand)}
+  .field .hint{font-size:11px;color:var(--muted);margin-top:4px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .modal footer{padding:14px 18px;border-top:1px solid var(--line);display:flex;
+    justify-content:flex-end;gap:9px}
+  .switch{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 0;border-bottom:1px solid var(--line2)}
+  .switch:last-child{border:none}
+  .switch .t{font-size:13px} .switch .d{font-size:11px;color:var(--muted)}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);
+    color:#fff;padding:10px 16px;border-radius:9px;font-size:13px;box-shadow:var(--shadow);
+    z-index:60;opacity:0;pointer-events:none;transition:.2s}
+  .toast.show{opacity:1}
+  .disclaimer{font-size:11px;color:var(--muted);text-align:center;margin-top:18px;line-height:1.6}
+  /* detail modal */
+  .dsec{margin-bottom:6px}
+  .dsec h3{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:14px 0 8px;border-bottom:1px solid var(--line2);padding-bottom:6px}
+  .dsec:first-child h3{margin-top:0}
+  .dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px}
+  .dl .k{font-size:11px;color:var(--muted)}
+  .dl .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;text-align:right;font-weight:560}
+  .drow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    border-bottom:1px solid var(--line2);padding:6px 0}
+  .drow:last-child{border:none}
+  .dnote{font-size:11px;color:var(--muted);margin-top:8px}
+  .dlink{display:inline-block;margin-top:6px;font-size:12px;color:var(--blue);text-decoration:none;
+    border:1px solid var(--line);border-radius:8px;padding:7px 11px}
+  .dlink:hover{border-color:var(--blue)}
+  .dloading{color:var(--muted);font-size:12px;padding:6px 0}
+
+  @media(max-width:720px){
+    .stats{grid-template-columns:1fr 1fr}
+    .brandblock p{display:none}
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <div class="brandblock">
+        <div class="eyebrow">Mainboard &amp; SME · Below-issue watchlist</div>
+        <h1>IPO Cross Watch</h1>
+        <p>Track listed IPOs trading under their issue price, and catch the moment current price is about to cross back over.</p>
+      </div>
+      <div class="top-actions">
+        <div class="apistate"><span class="dot" id="apiDot"></span><span id="apiText">Manual mode</span></div>
+        <button class="btn-ghost" id="openSettings">Settings</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat hero">
+        <div class="eyebrow">Crossing back ⌖</div>
+        <div class="v" id="sBack">0</div>
+        <div class="sub">fell below, now near/crossing</div>
+      </div>
+      <div class="stat">
+        <div class="eyebrow">Near cross</div>
+        <div class="v" id="sNear">0</div>
+        <div class="sub" id="sNearSub">within threshold, below issue</div>
+      </div>
+      <div class="stat">
+        <div class="eyebrow">Just crossed</div>
+        <div class="v" id="sCrossed">0</div>
+        <div class="sub">0–2% above issue</div>
+      </div>
+      <div class="stat">
+        <div class="eyebrow">Tracking</div>
+        <div class="v" id="sTotal">0</div>
+        <div class="sub" id="sUpdated">no prices yet</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="typeSeg">
+        <button data-type="all" class="on">All</button>
+        <button data-type="mainboard">Mainboard</button>
+        <button data-type="sme">SME</button>
+      </div>
+      <div class="seg" id="statusSeg">
+        <button data-status="all" class="on">Every status</button>
+        <button data-status="back">Crossing back ⌖</button>
+        <button data-status="near">Near</button>
+        <button data-status="crossed">Crossed</button>
+        <button data-status="below">Below</button>
+      </div>
+      <div class="search">
+        <span style="color:var(--muted)">⌕</span>
+        <input id="search" placeholder="Search company or symbol" />
+      </div>
+      <div class="thresh">
+        <label>Near threshold</label>
+        <input type="range" id="thresh" min="1" max="15" step="0.5" value="3" />
+        <span class="tval" id="threshVal">3%</span>
+      </div>
+      <button class="btn" id="findSyms" title="Auto-find NSE symbols from company names">Find symbols</button>
+      <button class="btn" id="refreshPrices" title="Update prices from your API">Refresh prices</button>
+      <button class="btn" id="importCsv" title="Import a CSV exported from Chittorgarh / any source">Import CSV</button>
+      <button class="btn-primary" id="addIpo">+ Add IPO</button>
+    </div>
+
+    <div class="card">
+      <div class="tablescroll">
+        <table id="table">
+          <thead>
+            <tr>
+              <th data-sort="name">Company <span class="arrow"></span></th>
+              <th data-sort="listingDate">Listed <span class="arrow"></span></th>
+              <th data-sort="issuePrice" class="right">Issue <span class="arrow"></span></th>
+              <th data-sort="listingPrice" class="right">Listing <span class="arrow"></span></th>
+              <th data-sort="listingGain" class="right">List gain <span class="arrow"></span></th>
+              <th data-sort="lowestPrice" class="right">Lowest <span class="arrow"></span></th>
+              <th data-sort="currentPrice" class="right">Current <span class="arrow"></span></th>
+              <th data-sort="vsIssue">vs Issue <span class="arrow"></span></th>
+              <th data-sort="statusRank">Status <span class="arrow"></span></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="empty" style="display:none">
+        <h3>Watchlist is empty</h3>
+        <p>Import a CSV exported from Chittorgarh (Mainboard + SME), or add an IPO by hand.</p>
+        <div class="row">
+          <button class="btn-primary" id="emptySample">Import CSV</button>
+          <button class="btn" id="emptyAdd">+ Add an IPO by hand</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="disclaimer">
+      Informational only — data from public sources may be delayed or inaccurate. Verify with NSE/BSE before any decision. Not investment advice.
+    </div>
+  </div>
+
+  <!-- Add / edit modal -->
+  <div class="scrim" id="ipoScrim">
+    <div class="modal">
+      <header><h2 id="ipoModalTitle">Add IPO</h2><button class="iconbtn" id="ipoClose">✕</button></header>
+      <div class="body">
+        <div class="field">
+          <label>Company name</label>
+          <input id="f_name" placeholder="e.g. Acme Industries" />
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>NSE / BSE symbol</label>
+            <input id="f_symbol" placeholder="e.g. ACME" />
+            <div class="hint">Needed for auto price fetch</div>
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <select id="f_type"><option value="mainboard">Mainboard</option><option value="sme">SME</option></select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Issue price ₹</label><input id="f_issue" type="number" step="0.01" placeholder="120" /></div>
+          <div class="field"><label>Listing price ₹</label><input id="f_listing" type="number" step="0.01" placeholder="optional" /></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Lowest since listing ₹</label><input id="f_lowest" type="number" step="0.01" placeholder="auto / optional" /></div>
+          <div class="field"><label>Current price ₹</label><input id="f_current" type="number" step="0.01" placeholder="auto / optional" /></div>
+        </div>
+      </div>
+      <footer>
+        <button class="btn" id="ipoCancel">Cancel</button>
+        <button class="btn-primary" id="ipoSave">Save</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="scrim" id="setScrim">
+    <div class="modal">
+      <header><h2>Settings</h2><button class="iconbtn" id="setClose">✕</button></header>
+      <div class="body">
+        <div class="field">
+          <label>Scraper API URL</label>
+          <input id="s_api" placeholder="https://your-app.onrender.com" />
+          <div class="hint">Paste your Render URL. Leave blank to stay in manual mode.</div>
+        </div>
+        <button class="btn btn-sm" id="testApi">Test connection</button>
+        <span id="testResult" class="hint" style="margin-left:8px"></span>
+        <div style="height:14px"></div>
+        <div class="switch">
+          <div><div class="t">Auto-refresh prices</div><div class="d">Re-pull prices on an interval while open</div></div>
+          <input type="checkbox" id="s_auto" style="width:auto" />
+        </div>
+        <div class="switch">
+          <div><div class="t">Refresh every</div><div class="d">Only when auto-refresh is on</div></div>
+          <select id="s_interval" style="width:auto">
+            <option value="60">1 min</option><option value="300">5 min</option>
+            <option value="900">15 min</option><option value="1800">30 min</option>
+          </select>
+        </div>
+        <div style="margin-top:14px">
+          <div class="t" style="font-size:13px;margin-bottom:2px">Backup</div>
+          <div class="d" style="font-size:11px;color:var(--muted);margin-bottom:8px">Your data syncs to the server automatically. Keep a file backup too — the free server can reset on redeploy.</div>
+          <button class="btn btn-sm" id="exportBackup">Export backup</button>
+          <button class="btn btn-sm" id="importBackup">Import backup</button>
+          <input type="file" id="backupFile" accept=".json,application/json" style="display:none" />
+        </div>
+      </div>
+      <footer>
+        <button class="btn" id="setCancel">Close</button>
+        <button class="btn-primary" id="setSave">Save settings</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Import modal -->
+  <div class="scrim" id="impScrim">
+    <div class="modal">
+      <header><h2>Import IPOs from CSV</h2><button class="iconbtn" id="impClose">✕</button></header>
+      <div class="body">
+        <div class="field">
+          <label>These rows are</label>
+          <select id="imp_type">
+            <option value="auto">Auto-detect from file</option>
+            <option value="mainboard">Mainboard</option>
+            <option value="sme">SME</option>
+          </select>
+          <div class="hint">SME export ko import karte waqt "SME" chuno (warna sab Mainboard maan liye jaayenge).</div>
+        </div>
+        <div class="field">
+          <label>Choose CSV file</label>
+          <input type="file" id="imp_file" accept=".csv,text/csv" />
+        </div>
+        <div style="text-align:center;color:var(--muted);font-size:11px;margin:6px 0">— or —</div>
+        <div class="field">
+          <label>Paste CSV text</label>
+          <textarea id="imp_text" rows="5" placeholder="Company, Issue Price, Listing Day Close, Current Price..." style="width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-family:var(--mono);font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div class="hint" id="imp_status"></div>
+      </div>
+      <footer>
+        <button class="btn" id="impCancel">Cancel</button>
+        <button class="btn-primary" id="impDo">Import</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Detail modal -->
+  <div class="scrim" id="detScrim">
+    <div class="modal" style="max-width:540px">
+      <header>
+        <div><h2 id="detTitle" style="margin-bottom:2px">IPO</h2>
+          <div id="detSub" class="num" style="font-size:11px;color:var(--muted)"></div></div>
+        <button class="iconbtn" id="detClose">✕</button>
+      </header>
+      <div class="body" id="detBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  // ---------- persistence (works when self-hosted; harmless if blocked) ----------
+  var KEY="ipoCrossWatch.v1";
+  function load(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return {}}}
+  function save(){
+    state.updatedAt=Date.now();
+    try{localStorage.setItem(KEY,JSON.stringify({ipos:state.ipos,settings:state.settings,
+      threshold:state.threshold,updatedAt:state.updatedAt}))}catch(e){}
+    scheduleSync();
+  }
+
+  var saved=load();
+  var state={
+    ipos: saved.ipos||[],
+    settings: Object.assign({apiUrl:"https://ipo-cross-tracker-api.onrender.com",auto:false,interval:60},saved.settings||{}),
+    threshold: saved.threshold!=null?saved.threshold:3,
+    updatedAt: saved.updatedAt||0,
+    filters:{type:"all",status:"all",search:""},
+    sort:{key:"listingDate",dir:-1}
+  };
+  var autoTimer=null, editingId=null;
+  if(!state.settings.apiUrl) state.settings.apiUrl="https://ipo-cross-tracker-api.onrender.com";
+
+  // ---------- helpers ----------
+  var $=function(s){return document.querySelector(s)};
+  function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+  function num(v){return (v===null||v===undefined||v==="")?null:(isNaN(+v)?null:+v)}
+  function fmt(v){return v==null?"—":"₹"+(+v).toLocaleString("en-IN",{maximumFractionDigits:2})}
+  function toast(m){var t=$("#toast");t.textContent=m;t.classList.add("show");
+    clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove("show")},2400)}
+
+  function vsIssue(o){var i=num(o.issuePrice),c=num(o.currentPrice);
+    if(i&&c)return (c-i)/i*100;
+    return o.vsIssuePct!=null?+o.vsIssuePct:null}
+  function listGain(o){var i=num(o.issuePrice),l=num(o.listingPrice);
+    if(i&&l)return (l-i)/i*100;
+    return o.listGainPct!=null?+o.listGainPct:null}
+  function parseDate(s){
+    if(!s)return null; s=String(s).trim();
+    var t=Date.parse(s); if(!isNaN(t))return t;
+    var m=s.match(/(\d{1,2})[ \-]([A-Za-z]{3,})[ \-,]+(\d{4})/); // 17-Feb-2026 / 17 Feb 2026
+    if(m){var t2=Date.parse(m[2]+" "+m[1]+", "+m[3]); if(!isNaN(t2))return t2}
+    return null;
+  }
+  function status(o){
+    var v=vsIssue(o); var th=state.threshold;
+    if(v===null) return "unknown";
+    if(v>=2) return "above";
+    if(v>=0) return "crossed";
+    if(v>=-th) return "near";
+    return "below";
+  }
+  var STATUS_RANK={near:0,crossed:1,below:2,above:3,unknown:4};
+  var STATUS_LABEL={near:"Near cross",crossed:"Just crossed",below:"Below issue",above:"Above issue",unknown:"No price"};
+
+  // "comeback" = kabhi issue ke neeche gaya AUR ab near/just-crossed hai
+  function wentBelow(o){
+    var i=num(o.issuePrice),lo=num(o.lowestPrice);
+    if(lo!=null&&i!=null&&lo<i) return true;     // lowest issue se neeche tha
+    var v=vsIssue(o); if(v!=null&&v<0) return true;   // abhi neeche hai
+    var lg=listGain(o); if(lg!=null&&lg<0) return true; // listing issue se neeche hua
+    return false;
+  }
+  function isComeback(o){
+    var s=status(o);
+    return (s==="near"||s==="crossed") && wentBelow(o);
+  }
+
+  // ---------- rendering ----------
+  function computeStats(){
+    var n=0,c=0,back=0;
+    state.ipos.forEach(function(o){var s=status(o);
+      if(s==="near")n++;else if(s==="crossed")c++;
+      if(isComeback(o))back++;});
+    $("#sBack").textContent=back; $("#sNear").textContent=n;
+    $("#sCrossed").textContent=c; $("#sTotal").textContent=state.ipos.length;
+    $("#sNearSub").textContent="within "+state.threshold+"% below issue";
+  }
+
+  function gauge(o){
+    var s=status(o), v=vsIssue(o);
+    if(v===null) return '<div class="gauge"><div class="glabel">no price</div></div>';
+    var clamped=Math.max(-25,Math.min(25,v));
+    var pos=50+(clamped/25*50);
+    var lbl=(v>=0?"+":"")+v.toFixed(1)+"%";
+    return '<div class="gauge"><div class="gtrack"><div class="gmid"></div>'+
+      '<div class="gmark '+s+'" style="left:'+pos+'%"></div></div>'+
+      '<div class="glabel">'+lbl+' vs issue</div></div>';
+  }
+
+  function row(o){
+    var s=status(o), v=vsIssue(o), lg=listGain(o), cb=isComeback(o);
+    var trCls = cb ? (s==="crossed"?"cb cb-crossed":"cb cb-near")
+                   : (s==="near"?"near":(s==="crossed"?"crossed":""));
+    var mark = cb ? '<span class="cbmark" title="Fell below issue, now crossing back">⌖</span>' : '';
+    var symHtml = o.symbol
+      ? '<div class="sym'+(o.symbolAuto?' auto':'')+'"'+(o.symbolAuto?' title="Auto-detected — verify"':'')+'>'+o.symbol+(o.symbolAuto?' ~':'')+'</div>'
+      : '<div class="sym missing">add symbol →</div>';
+    function pct(x){return x==null?'<span class="price">—</span>':
+      '<span class="pct '+(x>=0?'pos':'neg')+'">'+(x>=0?'+':'')+x.toFixed(1)+'%</span>'}
+    return '<tr class="'+trCls+'" data-id="'+o.id+'">'+
+      '<td><div class="company">'+mark+esc(o.name)+'</div>'+
+        '<span class="tag '+o.type+'">'+(o.type==="sme"?"SME":"Mainboard")+'</span> '+symHtml+'</td>'+
+      '<td class="num" style="font-size:12px;color:var(--muted);white-space:nowrap">'+(o.listingDate?esc(o.listingDate):'—')+'</td>'+
+      '<td class="price">'+fmt(o.issuePrice)+'</td>'+
+      '<td class="price">'+fmt(o.listingPrice)+'</td>'+
+      '<td class="price">'+pct(lg)+'</td>'+
+      '<td class="price">'+fmt(o.lowestPrice)+'</td>'+
+      '<td class="price">'+fmt(o.currentPrice)+'</td>'+
+      '<td>'+gauge(o)+'</td>'+
+      '<td><span class="badge b-'+s+'"><span class="b-dot"></span>'+STATUS_LABEL[s]+'</span></td>'+
+      '<td><div class="rowacts">'+
+        '<button class="iconbtn" data-act="edit">Edit</button>'+
+        '<button class="iconbtn del" data-act="del">Del</button></div></td>'+
+      '</tr>';
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  function visibleRows(){
+    var f=state.filters;
+    var list=state.ipos.filter(function(o){
+      if(f.type!=="all"&&o.type!==f.type) return false;
+      if(f.status==="back"){ if(!isComeback(o)) return false; }
+      else if(f.status!=="all"&&status(o)!==f.status) return false;
+      if(f.search){var q=f.search.toLowerCase();
+        if((o.name||"").toLowerCase().indexOf(q)<0 &&
+           (o.symbol||"").toLowerCase().indexOf(q)<0) return false;}
+      return true;
+    });
+    var k=state.sort.key,dir=state.sort.dir;
+    list.sort(function(a,b){
+      var av,bv;
+      if(k==="vsIssue"){av=vsIssue(a);bv=vsIssue(b);}
+      else if(k==="listingGain"){av=listGain(a);bv=listGain(b);}
+      else if(k==="statusRank"){av=STATUS_RANK[status(a)];bv=STATUS_RANK[status(b)];}
+      else if(k==="listingDate"){av=parseDate(a.listingDate);bv=parseDate(b.listingDate);}
+      else if(k==="name"){av=(a.name||"").toLowerCase();bv=(b.name||"").toLowerCase();
+        return av<bv?-1*dir:av>bv?1*dir:0;}
+      else{av=num(a[k]);bv=num(b[k]);}
+      if(av==null&&bv==null)return 0;   // missing values hamesha neeche
+      if(av==null)return 1;
+      if(bv==null)return -1;
+      return av<bv?-1*dir:av>bv?1*dir:0;
+    });
+    return list;
+  }
+
+  function render(){
+    computeStats();
+    var rows=visibleRows();
+    $("#tbody").innerHTML=rows.map(row).join("");
+    $("#empty").style.display=state.ipos.length?"none":"block";
+    $("#table").style.display=state.ipos.length?"":"none";
+    save();
+  }
+
+  // ---------- API ----------
+  function apiBase(){return (state.settings.apiUrl||"").replace(/\/+$/,"")}
+  function setApiDot(s,txt){var d=$("#apiDot");d.className="dot"+(s?" "+s:"");$("#apiText").textContent=txt}
+
+  // ---------- cross-device sync (server /state) ----------
+  var syncTimer=null, applyingRemote=false;
+  function scheduleSync(){
+    if(!apiBase()||applyingRemote)return;
+    clearTimeout(syncTimer);
+    syncTimer=setTimeout(pushState,1500);
+  }
+  async function pushState(){
+    if(!apiBase())return;
+    try{
+      await fetch(apiBase()+"/state",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ipos:state.ipos,settings:state.settings,
+          threshold:state.threshold,updatedAt:state.updatedAt})});
+    }catch(e){}
+  }
+  async function pullState(){
+    if(!apiBase())return;
+    try{
+      var r=await fetch(apiBase()+"/state",{cache:"no-store"});
+      var d=await r.json();
+      if(d&&d.ok&&d.state&&d.state.ipos&&(d.state.updatedAt||0)>(state.updatedAt||0)){
+        applyingRemote=true;
+        state.ipos=d.state.ipos;
+        if(d.state.settings)state.settings=Object.assign(state.settings,d.state.settings);
+        if(d.state.threshold!=null)state.threshold=d.state.threshold;
+        state.updatedAt=d.state.updatedAt;
+        $("#thresh").value=state.threshold;$("#threshVal").textContent=state.threshold+"%";
+        render();
+        applyingRemote=false;
+        toast("Synced latest data from server");
+      }
+    }catch(e){}
+  }
+
+  async function testConnection(url){
+    var base=(url||"").replace(/\/+$/,"");
+    if(!base) return {ok:false,msg:"No URL set"};
+    try{
+      var r=await fetch(base+"/health",{cache:"no-store"});
+      if(!r.ok) return {ok:false,msg:"HTTP "+r.status};
+      await r.json(); return {ok:true,msg:"Connected"};
+    }catch(e){return {ok:false,msg:"Unreachable (cold start? wait ~1 min)"}}
+  }
+
+  async function resolveSymbols(){
+    var base=apiBase();
+    if(!base){toast("Connect your API first (Settings)");return}
+    var rows=state.ipos.filter(function(o){return !o.symbol});
+    if(!rows.length){toast("Every row already has a symbol");return}
+    var btn=$("#findSyms");if(btn){btn.disabled=true;}
+    var ok=0;
+    for(var i=0;i<rows.length;i++){
+      if(btn)btn.textContent="Finding… "+(i+1)+"/"+rows.length;
+      try{
+        var r=await fetch(base+"/resolve?name="+encodeURIComponent(rows[i].name),{cache:"no-store"});
+        var d=await r.json();
+        if(d&&d.symbol){rows[i].symbol=d.symbol;rows[i].symbolAuto=true;ok++;render();}
+      }catch(e){}
+    }
+    if(btn){btn.disabled=false;btn.textContent="Find symbols";}
+    toast("Found "+ok+" of "+rows.length+" symbols — verify highlighted ones, then prices update.");
+    return ok;
+  }
+
+  async function refreshOne(o){
+    if(!o.symbol) return false;
+    try{
+      var r=await fetch(apiBase()+"/quote?symbol="+encodeURIComponent(o.symbol),{cache:"no-store"});
+      if(!r.ok) return false;
+      var q=await r.json();
+      if(q.current!=null)o.currentPrice=+(+q.current).toFixed(2);
+      if(q.lowest!=null)o.lowestPrice=+(+q.lowest).toFixed(2);
+      if(o.listingPrice==null&&q.listing!=null)o.listingPrice=+(+q.listing).toFixed(2);
+      return true;
+    }catch(e){return false}
+  }
+
+  async function refreshPrices(){
+    var base=apiBase();
+    if(!base){toast("Set your API URL in Settings first");return}
+    var withSym=state.ipos.filter(function(o){return o.symbol});
+    if(!withSym.length){toast("No symbols yet — add NSE symbols to fetch prices");return}
+    var btn=$("#refreshPrices");btn.disabled=true;btn.textContent="Refreshing…";
+    var ok=0;
+    for(var i=0;i<withSym.length;i++){if(await refreshOne(withSym[i]))ok++; render();}
+    $("#sUpdated").textContent="updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
+    btn.disabled=false;btn.textContent="Refresh prices";
+    toast("Prices updated for "+ok+"/"+withSym.length);
+  }
+
+  function setupAuto(){
+    if(autoTimer){clearInterval(autoTimer);autoTimer=null}
+    if(state.settings.auto&&apiBase()){
+      autoTimer=setInterval(function(){if(apiBase())refreshPrices()},
+        (state.settings.interval||60)*1000);
+    }
+  }
+
+  // ---------- modals ----------
+  function openIpoModal(o){
+    editingId=o?o.id:null;
+    $("#ipoModalTitle").textContent=o?"Edit IPO":"Add IPO";
+    $("#f_name").value=o?o.name:""; $("#f_symbol").value=o?(o.symbol||""):"";
+    $("#f_type").value=o?o.type:"mainboard"; $("#f_issue").value=o?(o.issuePrice??""):"";
+    $("#f_listing").value=o?(o.listingPrice??""):""; $("#f_lowest").value=o?(o.lowestPrice??""):"";
+    $("#f_current").value=o?(o.currentPrice??""):"";
+    $("#ipoScrim").classList.add("open");
+  }
+  function closeIpo(){$("#ipoScrim").classList.remove("open")}
+  function saveIpo(){
+    var name=$("#f_name").value.trim();
+    if(!name){toast("Company name is required");return}
+    var rec={name:name,symbol:$("#f_symbol").value.trim().toUpperCase(),symbolAuto:false,
+      type:$("#f_type").value,issuePrice:num($("#f_issue").value),
+      listingPrice:num($("#f_listing").value),lowestPrice:num($("#f_lowest").value),
+      currentPrice:num($("#f_current").value)};
+    if(editingId){var o=state.ipos.find(function(x){return x.id===editingId});Object.assign(o,rec);}
+    else{rec.id=uid();rec.source="manual";state.ipos.push(rec);}
+    closeIpo();render();toast(editingId?"Saved":"Added to watchlist");
+  }
+
+  function openSettings(){
+    $("#s_api").value=state.settings.apiUrl||"";
+    $("#s_auto").checked=!!state.settings.auto;
+    $("#s_interval").value=String(state.settings.interval||60);
+    $("#testResult").textContent="";
+    $("#setScrim").classList.add("open");
+  }
+  function closeSettings(){$("#setScrim").classList.remove("open")}
+  function saveSettings(){
+    state.settings.apiUrl=$("#s_api").value.trim();
+    state.settings.auto=$("#s_auto").checked;
+    state.settings.interval=+$("#s_interval").value;
+    save();closeSettings();reflectApiState();setupAuto();
+    toast("Settings saved");
+  }
+  async function reflectApiState(){
+    if(!apiBase()){setApiDot("","Manual mode");return}
+    setApiDot("","Checking…");
+    var res=await testConnection(apiBase());
+    setApiDot(res.ok?"live":"err",res.ok?"API connected":"API unreachable");
+  }
+
+
+  // ---------- CSV import ----------
+  function parseCSV(text){
+    text=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+    // delimiter auto-detect: pehli non-empty line dekho (tab > semicolon > comma)
+    var firstLine=(text.split("\n").find(function(l){return l.trim()})||"");
+    var delim=firstLine.indexOf("\t")>=0?"\t":
+              ((firstLine.split(";").length>firstLine.split(",").length)?";":",");
+    var rows=[],row=[],cur="",q=false,i,ch;
+    for(i=0;i<text.length;i++){ch=text[i];
+      if(q){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++} else q=false } else cur+=ch }
+      else{ if(ch==='"')q=true;
+        else if(ch===delim){row.push(cur);cur=""}
+        else if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur=""}
+        else cur+=ch }
+    }
+    if(cur!==""||row.length){row.push(cur);rows.push(row)}
+    return rows.filter(function(r){return r.some(function(c){return (c||"").trim()})});
+  }
+  function colIndex(header,needles){
+    for(var i=0;i<header.length;i++){var h=(header[i]||"").toLowerCase();
+      for(var j=0;j<needles.length;j++) if(h.indexOf(needles[j])>=0) return i}
+    return -1;
+  }
+  function parseNum(s){if(s==null)return null;
+    s=String(s).replace(/[^0-9.\-]/g,"").trim();
+    if(!s||s==="-")return null;var n=+s;return isNaN(n)?null:n}
+
+  function importCSV(text,forceType){
+    var rows=parseCSV(text);
+    if(rows.length<2){return {added:0,merged:0,err:"No data rows found"}}
+    var header=rows[0];
+    var ni=colIndex(header,["company","issuer","name"]);
+    var pi=colIndex(header,["issue price","issue"]);
+    var li=colIndex(header,["listing day close","listing price","listing close","listing day"]);
+    var ci=colIndex(header,["current price","current","ltp","last"]);
+    var lowi=colIndex(header,["low","lowest","52"]);
+    var symi=colIndex(header,["symbol","nse code","nse-code","code","ticker"]);
+    var ti=colIndex(header,["type","segment","exchange"]);
+    var di=colIndex(header,["listing date","listed on","date"]);
+    if(ni<0)ni=0;
+    var added=0,merged=0;
+    for(var k=1;k<rows.length;k++){
+      var r=rows[k];var name=(r[ni]||"").trim();
+      if(!name||name.toLowerCase()==="no record found.")continue;
+      var type=forceType&&forceType!=="auto"?forceType:
+        (ti>=0&&/sme/i.test(r[ti]||"")?"sme":(forceType==="auto"?"mainboard":"mainboard"));
+      var rec={name:name,type:type,
+        issuePrice:pi>=0?parseNum(r[pi]):null,
+        listingPrice:li>=0?parseNum(r[li]):null,
+        currentPrice:ci>=0?parseNum(r[ci]):null,
+        lowestPrice:lowi>=0?parseNum(r[lowi]):null,
+        symbol:symi>=0?(r[symi]||"").trim().toUpperCase():"",
+        listingDate:di>=0?(r[di]||"").trim():null};
+      var keyN=name.toLowerCase();
+      var ex=state.ipos.find(function(o){return (o.name||"").toLowerCase()===keyN});
+      if(ex){ ["issuePrice","listingPrice","currentPrice","lowestPrice"].forEach(function(f){
+          if(ex[f]==null&&rec[f]!=null)ex[f]=rec[f]});
+        if(!ex.symbol&&rec.symbol)ex.symbol=rec.symbol;
+        if(!ex.listingDate&&rec.listingDate)ex.listingDate=rec.listingDate;
+        ex.type=rec.type; merged++;
+      }else{ rec.id=uid();rec.source="import";state.ipos.push(rec);added++ }
+    }
+    return {added:added,merged:merged};
+  }
+
+  function openImport(){$("#imp_status").textContent="";$("#imp_text").value="";
+    $("#imp_file").value="";$("#impScrim").classList.add("open")}
+  function closeImport(){$("#impScrim").classList.remove("open")}
+  function doImport(){
+    var forceType=$("#imp_type").value;
+    var text=$("#imp_text").value.trim();
+    function finish(text){
+      if(!text){$("#imp_status").textContent="Nothing to import";return}
+      var res=importCSV(text,forceType);
+      if(res.err){$("#imp_status").textContent=res.err;return}
+      render();closeImport();toast("Imported "+res.added+" new, "+res.merged+" updated");
+      // API juda ho to: naam se symbol dhoondo, fir prices laao (auto)
+      if(apiBase()){
+        resolveSymbols().then(function(){ refreshPrices(); });
+      }
+    }
+    var f=$("#imp_file").files[0];
+    if(f){var rd=new FileReader();rd.onload=function(){finish(String(rd.result))};rd.readAsText(f)}
+    else finish(text);
+  }
+
+  // ---------- detail panel ----------
+  function fmtCr(v){return v==null?"—":"₹"+(v/1e7).toLocaleString("en-IN",{maximumFractionDigits:0})+" Cr"}
+  function fmtVol(v){return v==null?"—":(+v).toLocaleString("en-IN")}
+  function fmtFrac(v){return v==null?"—":(v*100).toFixed(1)+"%"}
+  function drow(k,v){return '<div class="drow"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'}
+
+  function ipoSection(o){
+    var v=vsIssue(o), lg=listGain(o), s=status(o);
+    function p(x){return x==null?'—':(x>=0?'+':'')+x.toFixed(1)+'%'}
+    return '<div class="dsec"><h3>IPO</h3>'+
+      drow("Issue price",fmt(o.issuePrice))+
+      drow("Listing price",fmt(o.listingPrice))+
+      drow("Listing gain",p(lg))+
+      drow("Lowest since listing",fmt(o.lowestPrice))+
+      drow("Current price",fmt(o.currentPrice))+
+      drow("vs Issue",p(v))+
+      drow("Status",'<span class="badge b-'+s+'"><span class="b-dot"></span>'+STATUS_LABEL[s]+'</span>'+
+        (isComeback(o)?' <span class="cbmark">⌖</span>':''))+
+      '</div>';
+  }
+  function marketSection(d,o){
+    if(d==="loading") return '<div class="dsec"><h3>Market</h3><div class="dloading">Loading market data…</div></div>';
+    if(!d) return '<div class="dsec"><h3>Market</h3><div class="dnote">Couldn’t load market data (cold start or source blocked). Try again.</div></div>';
+    var dayRange=(d.dayLow!=null&&d.dayHigh!=null)?(fmt(d.dayLow)+" – "+fmt(d.dayHigh)):"—";
+    var sect=d.sectorFull||[d.sector,d.industry].filter(Boolean).join(" · ")||"—";
+    function pv(v){return v==null?"—":(+v).toFixed(1)+"%"}       // already-% (Screener)
+    function pf(v){return v==null?"—":(+v*100).toFixed(1)+"%"}    // fraction (Yahoo)
+    var market='<div class="dsec"><h3>Market</h3>'+
+        drow("Market cap",fmtCr(d.marketCap))+
+        drow("52-week high",fmt(d.fiftyTwoWeekHigh))+
+        drow("52-week low",fmt(d.fiftyTwoWeekLow))+
+        drow("Day range",dayRange)+
+        drow("Volume",fmtVol(d.volume))+
+        drow("P/E ratio",d.peRatio!=null?(+d.peRatio).toFixed(1):"—")+
+        drow("ROE",pv(d.roe))+
+        drow("ROCE",pv(d.roce))+
+        drow("Book value",fmt(d.bookValue))+
+        drow("Dividend yield",pv(d.dividendYield))+
+        drow("EPS (TTM)",d.eps!=null?fmt(d.eps):"—")+
+        drow("Sector",sect)+
+      '</div>';
+    var sh="";
+    var shd=d.shareholding;
+    if(shd){
+      if(shd.promoters!=null) sh+=drow("Promoters",pv(shd.promoters));
+      if(shd.fii!=null) sh+=drow("FIIs",pv(shd.fii));
+      if(shd.dii!=null) sh+=drow("DIIs",pv(shd.dii));
+      if(shd.government!=null) sh+=drow("Government",pv(shd.government));
+      if(shd.public!=null) sh+=drow("Public",pv(shd.public));
+      if(shd.shareholders!=null) sh+=drow("No. of shareholders",fmtVol(shd.shareholders));
+    }
+    if(!sh){ // fallback agar full table na mile
+      if(d.promoterHolding!=null) sh+=drow("Promoters",pv(d.promoterHolding));
+      if(d.institutionsPct!=null) sh+=drow("Institutions (FII+DII)",pf(d.institutionsPct));
+    }
+    var shHead=d.shareholdingDate?'Shareholding · '+esc(d.shareholdingDate):'Shareholding';
+    var share='<div class="dsec"><h3>'+shHead+'</h3>'+
+        (sh||'<div class="dnote">Shareholding not available from the data source.</div>')+
+        (o.symbol?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(o.symbol)+'/#shareholding">Quarterly history on Screener ↗</a>':'')+
+      '</div>';
+    return market+share;
+  }
+
+  async function openDetail(o){
+    $("#detTitle").textContent=o.name;
+    $("#detSub").innerHTML=(o.type==="sme"?"SME":"Mainboard")+(o.symbol?" · "+o.symbol+(o.symbolAuto?" ~":""):" · no symbol")+(o.listingDate?" · listed "+esc(o.listingDate):"");
+    var needMarket=o.symbol&&apiBase();
+    $("#detBody").innerHTML=ipoSection(o)+(needMarket?marketSection("loading",o):
+      '<div class="dsec"><h3>Market</h3><div class="dnote">'+(o.symbol?'Connect your API to load market data.':'Add an NSE symbol (Edit) to load market cap, 52-week range, shareholding, etc.')+'</div>'+
+      (o.symbol?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(o.symbol)+'/">Open on Screener ↗</a>':'')+'</div>');
+    $("#detScrim").classList.add("open");
+    if(needMarket){
+      var d=null;
+      try{var r=await fetch(apiBase()+"/detail?symbol="+encodeURIComponent(o.symbol),{cache:"no-store"});
+        if(r.ok)d=await r.json();}catch(e){}
+      // agar modal abhi bhi isi IPO ka khula hai tabhi update karo
+      if($("#detTitle").textContent===o.name)
+        $("#detBody").innerHTML=ipoSection(o)+marketSection(d,o);
+    }
+  }
+  function closeDetail(){$("#detScrim").classList.remove("open")}
+
+  // ---------- backup ----------
+  function exportBackup(){
+    var blob=new Blob([JSON.stringify({ipos:state.ipos,settings:state.settings,threshold:state.threshold},null,2)],{type:"application/json"});
+    var a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download="ipo-cross-watch-backup-"+new Date().toISOString().slice(0,10)+".json";
+    a.click();URL.revokeObjectURL(a.href);
+  }
+  function importBackup(file){
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{var d=JSON.parse(String(rd.result));
+        if(!d.ipos)throw 0;
+        state.ipos=d.ipos;
+        if(d.settings)state.settings=Object.assign(state.settings,d.settings);
+        if(d.threshold!=null)state.threshold=d.threshold;
+        if(!state.settings.apiUrl)state.settings.apiUrl="https://ipo-cross-tracker-api.onrender.com";
+        $("#thresh").value=state.threshold;$("#threshVal").textContent=state.threshold+"%";
+        render();toast("Backup restored — "+state.ipos.length+" IPOs");
+      }catch(e){toast("Invalid backup file")}
+    };
+    rd.readAsText(file);
+  }
+
+  // ---------- events ----------
+  $("#typeSeg").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;
+    state.filters.type=b.dataset.type;
+    [].forEach.call(this.children,function(c){c.classList.toggle("on",c===b)});render()});
+  $("#statusSeg").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;
+    state.filters.status=b.dataset.status;
+    [].forEach.call(this.children,function(c){c.classList.toggle("on",c===b)});render()});
+  $("#search").addEventListener("input",function(){state.filters.search=this.value;render()});
+  $("#thresh").addEventListener("input",function(){state.threshold=+this.value;
+    $("#threshVal").textContent=this.value+"%";render()});
+  $("#table").addEventListener("click",function(e){
+    var th=e.target.closest("th[data-sort]");
+    if(th){var k=th.dataset.sort;
+      if(state.sort.key===k)state.sort.dir*=-1;else{state.sort.key=k;state.sort.dir=1}render();return}
+    var btn=e.target.closest("button[data-act]");
+    if(btn){
+      var id=btn.closest("tr").dataset.id;var o=state.ipos.find(function(x){return x.id===id});
+      if(btn.dataset.act==="edit")openIpoModal(o);
+      else if(btn.dataset.act==="del"){if(confirm("Remove "+o.name+"?")){
+        state.ipos=state.ipos.filter(function(x){return x.id!==id});render()}}
+      return;
+    }
+    var tr=e.target.closest("tr[data-id]");
+    if(tr){var od=state.ipos.find(function(x){return x.id===tr.dataset.id});if(od)openDetail(od);}
+  });
+
+  $("#addIpo").addEventListener("click",function(){openIpoModal(null)});
+  $("#emptyAdd").addEventListener("click",function(){openIpoModal(null)});
+  $("#emptySample").addEventListener("click",openImport);
+  $("#ipoClose").addEventListener("click",closeIpo);
+  $("#ipoCancel").addEventListener("click",closeIpo);
+  $("#ipoSave").addEventListener("click",saveIpo);
+  $("#detClose").addEventListener("click",closeDetail);
+  $("#exportBackup").addEventListener("click",exportBackup);
+  $("#importBackup").addEventListener("click",function(){$("#backupFile").click()});
+  $("#backupFile").addEventListener("change",function(){if(this.files[0])importBackup(this.files[0])});
+  $("#importCsv").addEventListener("click",openImport);
+  $("#impClose").addEventListener("click",closeImport);
+  $("#impCancel").addEventListener("click",closeImport);
+  $("#impDo").addEventListener("click",doImport);
+  $("#openSettings").addEventListener("click",openSettings);
+  $("#setClose").addEventListener("click",closeSettings);
+  $("#setCancel").addEventListener("click",closeSettings);
+  $("#setSave").addEventListener("click",saveSettings);
+  $("#findSyms").addEventListener("click",resolveSymbols);
+  $("#refreshPrices").addEventListener("click",refreshPrices);
+  $("#testApi").addEventListener("click",async function(){
+    $("#testResult").textContent="Testing…";
+    var res=await testConnection($("#s_api").value.trim());
+    $("#testResult").textContent=res.msg;
+    $("#testResult").style.color=res.ok?"var(--green)":"var(--rose)";
+  });
+  [].forEach.call(document.querySelectorAll(".scrim"),function(sc){
+    sc.addEventListener("click",function(e){if(e.target===sc)sc.classList.remove("open")})});
+
+  // ---------- boot ----------
+  $("#threshVal").textContent=state.threshold+"%";
+  $("#thresh").value=state.threshold;
+  render();
+  reflectApiState();
+  pullState();
+  setupAuto();
+})();
+</script>
+</body>
+</html>
