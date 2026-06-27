@@ -440,6 +440,15 @@ def scrape_screener(symbol):
     return out
 
 
+@app.get("/screener")
+def screener():
+    symbol = request.args.get("symbol", "").strip()
+    if not symbol:
+        return jsonify({"error": "symbol required"}), 400
+    data = scrape_screener(symbol)
+    return jsonify({"symbol": symbol.upper(), "ok": bool(data), "data": data})
+
+
 @app.get("/detail")
 def detail():
     symbol = request.args.get("symbol", "").strip()
