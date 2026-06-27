@@ -267,6 +267,99 @@ def get_quote(symbol):
     return out
 
 
+# --- richer details: market cap, 52w, PE/EPS, sector, shareholding ---
+_YSESS = {}
+
+def _yahoo_session():
+    """Cookie + crumb wali session (quoteSummary ko crumb chahiye hota hai)."""
+    now = time.time()
+    cur = _YSESS.get("s")
+    if cur and now - cur["t"] < 600:
+        return cur["sess"], cur["crumb"]
+    sess = requests.Session()
+    sess.headers.update(HEADERS)
+    crumb = None
+    try:
+        sess.get("https://fc.yahoo.com", timeout=10)
+        r = sess.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
+        if r.status_code == 200 and r.text and "<" not in r.text:
+            crumb = r.text.strip()
+    except requests.RequestException:
+        pass
+    _YSESS["s"] = {"sess": sess, "crumb": crumb, "t": now}
+    return sess, crumb
+
+
+def _raw(x):
+    if isinstance(x, dict):
+        return x.get("raw")
+    return x
+
+
+def yahoo_summary(symbol, suffix):
+    sess, crumb = _yahoo_session()
+    sym = symbol.upper().strip() + suffix
+    modules = "price,summaryDetail,defaultKeyStatistics,assetProfile,majorHoldersBreakdown"
+    url = (f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{sym}"
+           f"?modules={modules}")
+    if crumb:
+        url += "&crumb=" + requests.utils.quote(crumb)
+    try:
+        r = sess.get(url, timeout=12)
+        if r.status_code != 200:
+            return None
+        return (r.json().get("quoteSummary", {}).get("result") or [None])[0]
+    except requests.RequestException:
+        return None
+
+
+def get_detail(symbol):
+    cached = _cache_get(f"detail:{symbol.upper()}")
+    if cached is not None:
+        return cached
+    out = {"symbol": symbol.upper()}
+    # 1) chart meta — hamesha milta hai (52w, day range, volume, price)
+    hist = yahoo_history(symbol, ".NS") or yahoo_history(symbol, ".BO")
+    suffix = ".NS"
+    if hist:
+        out["current"] = hist.get("current")
+        out["fiftyTwoWeekLow"] = hist.get("fiftyTwoWeekLow")
+        out["lowest"] = hist.get("lowest")
+        suffix = ".NS" if hist.get("symbol", "").endswith(".NS") else ".BO"
+    # 2) quoteSummary — market cap, PE, EPS, sector, holders (best-effort)
+    res = yahoo_summary(symbol, suffix) or {}
+    sd = res.get("summaryDetail", {}) or {}
+    ks = res.get("defaultKeyStatistics", {}) or {}
+    pr = res.get("price", {}) or {}
+    ap = res.get("assetProfile", {}) or {}
+    mh = res.get("majorHoldersBreakdown", {}) or {}
+    out.update({
+        "name": pr.get("longName") or pr.get("shortName"),
+        "marketCap": _raw(pr.get("marketCap")) or _raw(sd.get("marketCap")),
+        "fiftyTwoWeekHigh": _raw(sd.get("fiftyTwoWeekHigh")) or out.get("fiftyTwoWeekHigh"),
+        "fiftyTwoWeekLow": _raw(sd.get("fiftyTwoWeekLow")) or out.get("fiftyTwoWeekLow"),
+        "dayHigh": _raw(sd.get("dayHigh")), "dayLow": _raw(sd.get("dayLow")),
+        "volume": _raw(sd.get("volume")) or _raw(sd.get("averageVolume")),
+        "peRatio": _raw(sd.get("trailingPE")) or _raw(ks.get("forwardPE")),
+        "eps": _raw(ks.get("trailingEps")),
+        "bookValue": _raw(ks.get("bookValue")),
+        "sector": ap.get("sector"), "industry": ap.get("industry"),
+        "insidersPct": _raw(mh.get("insidersPercentHeld")),
+        "institutionsPct": _raw(mh.get("institutionsPercentHeld")),
+        "currency": pr.get("currency", "INR"),
+    })
+    _cache_set(f"detail:{symbol.upper()}", out)
+    return out
+
+
+@app.get("/detail")
+def detail():
+    symbol = request.args.get("symbol", "").strip()
+    if not symbol:
+        return jsonify({"error": "symbol required"}), 400
+    return jsonify(get_detail(symbol))
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
