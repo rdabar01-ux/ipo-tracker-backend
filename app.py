@@ -299,10 +299,11 @@ def _raw(x):
     return x
 
 
-def yahoo_summary(symbol, suffix):
+def yahoo_summary(symbol, suffix, modules=None):
     sess, crumb = _yahoo_session()
     sym = symbol.upper().strip() + suffix
-    modules = "price,summaryDetail,defaultKeyStatistics,assetProfile,majorHoldersBreakdown"
+    if modules is None:
+        modules = "price,summaryDetail,defaultKeyStatistics,assetProfile,majorHoldersBreakdown"
     url = (f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{sym}"
            f"?modules={modules}")
     if crumb:
@@ -347,6 +348,9 @@ def get_detail(symbol, screener=None):
         "eps": _raw(ks.get("trailingEps")),
         "bookValue": _raw(ks.get("bookValue")),
         "sector": ap.get("sector"), "industry": ap.get("industry"),
+        "location": ", ".join([x for x in [ap.get("city"), ap.get("state"), ap.get("country")] if x]) or None,
+        "website": ap.get("website"),
+        "about": ap.get("longBusinessSummary"),
         "insidersPct": _raw(mh.get("insidersPercentHeld")),
         "institutionsPct": _raw(mh.get("institutionsPercentHeld")),
         "currency": pr.get("currency", "INR"),
@@ -507,6 +511,32 @@ def screener():
         return jsonify({"error": "symbol required"}), 400
     data = scrape_screener(symbol)
     return jsonify({"symbol": symbol.upper(), "ok": bool(data), "data": data})
+
+
+def get_profile(symbol):
+    key = "profile:" + symbol.upper()
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    out = {"industry": None, "location": None, "sector": None}
+    for suf in (".NS", ".BO"):
+        res = yahoo_summary(symbol, suf, modules="assetProfile")
+        ap = (res or {}).get("assetProfile") if res else None
+        if ap:
+            out["industry"] = ap.get("industry")
+            out["sector"] = ap.get("sector")
+            out["location"] = ", ".join([x for x in [ap.get("city"), ap.get("country")] if x]) or None
+            break
+    _cache_set(key, out)
+    return out
+
+
+@app.get("/profile")
+def profile():
+    symbol = request.args.get("symbol", "").strip()
+    if not symbol:
+        return jsonify({"error": "symbol required"}), 400
+    return jsonify(get_profile(symbol))
 
 
 @app.get("/detail")

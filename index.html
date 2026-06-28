@@ -81,6 +81,9 @@
   .thresh label{font-size:11.5px;color:var(--muted);white-space:nowrap}
   .thresh .tval{font-family:var(--mono);font-weight:600;color:var(--amber);min-width:34px;text-align:right}
   input[type=range]{accent-color:var(--amber)}
+  .leadsel{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 11px;
+    font-size:12.5px;color:var(--ink);font-family:var(--sans);outline:none;max-width:190px}
+  .leadsel:focus{border-color:var(--brand)}
 
   /* table */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
@@ -262,6 +265,8 @@
         <button data-status="crossed">Crossed</button>
         <button data-status="below">Below</button>
       </div>
+      <select id="industryFilter" class="leadsel"><option value="all">All industries</option></select>
+      <select id="locationFilter" class="leadsel"><option value="all">All locations</option></select>
       <div class="search">
         <span style="color:var(--muted)">⌕</span>
         <input id="search" placeholder="Search company or symbol" />
@@ -291,6 +296,8 @@
               <th data-sort="currentPrice" class="right">Current <span class="arrow"></span></th>
               <th data-sort="vsIssue">vs Issue <span class="arrow"></span></th>
               <th data-sort="statusRank">Status <span class="arrow"></span></th>
+              <th data-sort="industry">Industry <span class="arrow"></span></th>
+              <th data-sort="location">Location <span class="arrow"></span></th>
               <th></th>
             </tr>
           </thead>
@@ -336,6 +343,11 @@
         <div class="field">
           <label>Type</label>
           <select id="f_type"><option value="mainboard">Mainboard</option><option value="sme">SME</option></select>
+        </div>
+        <div class="field">
+          <label>Lead manager(s)</label>
+          <input id="f_lead" placeholder="optional — e.g. Kotak, Axis Capital" />
+          <div class="hint">IPO prospectus data — not auto-fetched</div>
         </div>
         <div class="grid2">
           <div class="field"><label>Issue price ₹</label><input id="f_issue" type="number" step="0.01" placeholder="120" /></div>
@@ -462,7 +474,7 @@
     settings: Object.assign({apiUrl:"https://ipo-cross-tracker-api.onrender.com",auto:false,interval:60},saved.settings||{}),
     threshold: saved.threshold!=null?saved.threshold:3,
     updatedAt: saved.updatedAt||0,
-    filters:{type:"all",status:"all",search:""},
+    filters:{type:"all",status:"all",search:"",industry:"all",location:"all"},
     sort:{key:"listingDate",dir:-1}
   };
   var autoTimer=null, editingId=null;
@@ -556,6 +568,8 @@
       '<td class="price">'+fmt(o.currentPrice)+'</td>'+
       '<td>'+gauge(o)+'</td>'+
       '<td><span class="badge b-'+s+'"><span class="b-dot"></span>'+STATUS_LABEL[s]+'</span></td>'+
+      '<td style="font-size:11.5px;color:var(--muted);max-width:150px">'+(o.industry?esc(o.industry):'—')+'</td>'+
+      '<td style="font-size:11.5px;color:var(--muted);max-width:130px">'+(o.location?esc(o.location):'—')+'</td>'+
       '<td><div class="rowacts">'+
         '<button class="iconbtn" data-act="edit">Edit</button>'+
         '<button class="iconbtn del" data-act="del">Del</button></div></td>'+
@@ -564,15 +578,37 @@
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 
+  var _filtSig="";
+  function fillSelect(id,vals,cur,allLabel){
+    var sel=$("#"+id);
+    var html='<option value="all">'+allLabel+'</option>';
+    vals.forEach(function(v){html+='<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>'});
+    sel.innerHTML=html;
+    if(cur!=="all"&&vals.indexOf(cur)<0){state.filters[id==="industryFilter"?"industry":"location"]="all";sel.value="all";}
+  }
+  function refreshFilters(){
+    var ind={},loc={};
+    state.ipos.forEach(function(o){if(o.industry)ind[o.industry]=1;if(o.location)loc[o.location]=1;});
+    var iv=Object.keys(ind).sort(),lv=Object.keys(loc).sort();
+    var sig=iv.join("|")+"##"+lv.join("|");
+    if(sig===_filtSig)return;
+    _filtSig=sig;
+    fillSelect("industryFilter",iv,state.filters.industry,"All industries");
+    fillSelect("locationFilter",lv,state.filters.location,"All locations");
+  }
+
   function visibleRows(){
     var f=state.filters;
     var list=state.ipos.filter(function(o){
       if(f.type!=="all"&&o.type!==f.type) return false;
       if(f.status==="back"){ if(!isComeback(o)) return false; }
       else if(f.status!=="all"&&status(o)!==f.status) return false;
+      if(f.industry!=="all"&&o.industry!==f.industry) return false;
+      if(f.location!=="all"&&o.location!==f.location) return false;
       if(f.search){var q=f.search.toLowerCase();
         if((o.name||"").toLowerCase().indexOf(q)<0 &&
-           (o.symbol||"").toLowerCase().indexOf(q)<0) return false;}
+           (o.symbol||"").toLowerCase().indexOf(q)<0 &&
+           (o.industry||"").toLowerCase().indexOf(q)<0) return false;}
       return true;
     });
     var k=state.sort.key,dir=state.sort.dir;
@@ -583,6 +619,9 @@
       else if(k==="statusRank"){av=STATUS_RANK[status(a)];bv=STATUS_RANK[status(b)];}
       else if(k==="listingDate"){av=parseDate(a.listingDate);bv=parseDate(b.listingDate);}
       else if(k==="name"){av=(a.name||"").toLowerCase();bv=(b.name||"").toLowerCase();
+        return av<bv?-1*dir:av>bv?1*dir:0;}
+      else if(k==="industry"||k==="location"){av=(a[k]||"").toLowerCase();bv=(b[k]||"").toLowerCase();
+        if(!av&&!bv)return 0; if(!av)return 1; if(!bv)return -1;
         return av<bv?-1*dir:av>bv?1*dir:0;}
       else{av=num(a[k]);bv=num(b[k]);}
       if(av==null&&bv==null)return 0;   // missing values hamesha neeche
@@ -595,6 +634,7 @@
 
   function render(){
     computeStats();
+    refreshFilters();
     var rows=visibleRows();
     $("#tbody").innerHTML=rows.map(row).join("");
     $("#empty").style.display=state.ipos.length?"none":"block";
@@ -676,15 +716,22 @@
 
   async function refreshOne(o){
     if(!o.symbol) return false;
+    var okq=false;
     try{
       var r=await fetch(apiBase()+"/quote?symbol="+encodeURIComponent(o.symbol),{cache:"no-store"});
-      if(!r.ok) return false;
-      var q=await r.json();
-      if(q.current!=null)o.currentPrice=+(+q.current).toFixed(2);
-      if(q.lowest!=null)o.lowestPrice=+(+q.lowest).toFixed(2);
-      if(o.listingPrice==null&&q.listing!=null)o.listingPrice=+(+q.listing).toFixed(2);
-      return true;
-    }catch(e){return false}
+      if(r.ok){var q=await r.json();
+        if(q.current!=null)o.currentPrice=+(+q.current).toFixed(2);
+        if(q.lowest!=null)o.lowestPrice=+(+q.lowest).toFixed(2);
+        if(o.listingPrice==null&&q.listing!=null)o.listingPrice=+(+q.listing).toFixed(2);
+        okq=true;}
+    }catch(e){}
+    if(!o.industry){ // industry/location ek baar enrich karo (static hai)
+      try{var pr=await fetch(apiBase()+"/profile?symbol="+encodeURIComponent(o.symbol),{cache:"no-store"});
+        if(pr.ok){var p=await pr.json();
+          if(p.industry)o.industry=p.industry; if(p.location)o.location=p.location;}
+      }catch(e){}
+    }
+    return okq;
   }
 
   async function refreshPrices(){
@@ -714,6 +761,7 @@
     $("#ipoModalTitle").textContent=o?"Edit IPO":"Add IPO";
     $("#f_name").value=o?o.name:""; $("#f_symbol").value=o?(o.symbol||""):"";
     $("#f_screener").value=o?(o.screenerSlug||""):"";
+    $("#f_lead").value=o?(o.leadManager||""):"";
     $("#f_type").value=o?o.type:"mainboard"; $("#f_issue").value=o?(o.issuePrice??""):"";
     $("#f_listing").value=o?(o.listingPrice??""):""; $("#f_lowest").value=o?(o.lowestPrice??""):"";
     $("#f_current").value=o?(o.currentPrice??""):"";
@@ -725,7 +773,7 @@
     if(!name){toast("Company name is required");return}
     var rec={name:name,symbol:$("#f_symbol").value.trim().toUpperCase(),symbolAuto:false,
       screenerSlug:$("#f_screener").value.trim().toUpperCase(),
-      type:$("#f_type").value,issuePrice:num($("#f_issue").value),
+      type:$("#f_type").value,leadManager:$("#f_lead").value.trim(),issuePrice:num($("#f_issue").value),
       listingPrice:num($("#f_listing").value),lowestPrice:num($("#f_lowest").value),
       currentPrice:num($("#f_current").value)};
     if(editingId){var o=state.ipos.find(function(x){return x.id===editingId});Object.assign(o,rec);}
@@ -906,6 +954,19 @@
     return market+share;
   }
 
+  function dtext(k,v){return '<div style="padding:7px 0;border-bottom:1px solid var(--line2)">'+
+    '<div class="k" style="margin-bottom:3px">'+k+'</div><div style="font-size:12.5px;line-height:1.5">'+v+'</div></div>'}
+  function companySection(d,o){
+    var ind=(d&&d.industry)?esc(d.industry):"—";
+    var loc=(d&&d.location)?esc(d.location):"—";
+    var lead=o.leadManager?esc(o.leadManager):'<span style="color:var(--muted)">— (add in Edit)</span>';
+    var web=(d&&d.website)?'<a href="'+esc(d.website)+'" target="_blank" rel="noopener" style="color:var(--blue)">'+esc(d.website.replace(/^https?:\/\//,""))+'</a>':"—";
+    var about=(d&&d.about)?'<div class="dnote" style="margin-top:8px;line-height:1.55">'+esc(d.about.slice(0,340))+(d.about.length>340?'…':'')+'</div>':'';
+    return '<div class="dsec"><h3>Company</h3>'+
+      dtext("Industry",ind)+dtext("Location",loc)+dtext("Lead manager",lead)+dtext("Website",web)+
+      about+'</div>';
+  }
+
   async function openDetail(o){
     $("#detTitle").textContent=o.name;
     $("#detSub").innerHTML=(o.type==="sme"?"SME":"Mainboard")+(o.symbol?" · "+o.symbol+(o.symbolAuto?" ~":""):" · no symbol")+(o.listingDate?" · listed "+esc(o.listingDate):"");
@@ -913,7 +974,7 @@
     var needMarket=sym&&apiBase();
     $("#detBody").innerHTML=ipoSection(o)+(needMarket?marketSection("loading",o):
       '<div class="dsec"><h3>Market</h3><div class="dnote">'+(sym?'Connect your API to load market data.':'Add an NSE symbol (Edit) to load market cap, 52-week range, shareholding, etc.')+'</div>'+
-      (slug(o)?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(slug(o))+'/">Open on Screener ↗</a>':'')+'</div>');
+      (slug(o)?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(slug(o))+'/">Open on Screener ↗</a>':'')+'</div>')+companySection(null,o);
     $("#detScrim").classList.add("open");
     if(needMarket){
       var d=null;
@@ -921,8 +982,12 @@
             (o.screenerSlug?"&screener="+encodeURIComponent(o.screenerSlug):"");
         var r=await fetch(url,{cache:"no-store"});
         if(r.ok)d=await r.json();}catch(e){}
+      if(d){var ch=false;
+        if(d.industry&&!o.industry){o.industry=d.industry;ch=true;}
+        if(d.location&&!o.location){o.location=d.location;ch=true;}
+        if(ch)save();}
       if($("#detTitle").textContent===o.name)
-        $("#detBody").innerHTML=ipoSection(o)+marketSection(d,o);
+        $("#detBody").innerHTML=ipoSection(o)+marketSection(d,o)+companySection(d,o);
     }
   }
   function closeDetail(){$("#detScrim").classList.remove("open")}
@@ -967,6 +1032,8 @@
   $("#statusSeg").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;
     state.filters.status=b.dataset.status;
     [].forEach.call(this.children,function(c){c.classList.toggle("on",c===b)});render()});
+  $("#industryFilter").addEventListener("change",function(){state.filters.industry=this.value;render()});
+  $("#locationFilter").addEventListener("change",function(){state.filters.location=this.value;render()});
   $("#search").addEventListener("input",function(){state.filters.search=this.value;render()});
   $("#thresh").addEventListener("input",function(){state.threshold=+this.value;
     $("#threshVal").textContent=this.value+"%";render()});
