@@ -961,6 +961,7 @@
     var share='<div class="dsec"><h3>'+shHead+'</h3>'+
         (sh||'<div class="dnote">Shareholding not available from the data source.</div>')+
         (slug(o)?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(slug(o))+'/#shareholding">Quarterly history on Screener ↗</a>':'')+
+        (slug(o)?' <a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(slug(o))+'/#documents">Investor presentations &amp; filings ↗</a>':'')+
       '</div>';
     return market+share;
   }
