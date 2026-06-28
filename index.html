@@ -383,6 +383,11 @@
           <button class="btn btn-sm" id="exportBackup">Export backup</button>
           <button class="btn btn-sm" id="importBackup">Import backup</button>
           <input type="file" id="backupFile" accept=".json,application/json" style="display:none" />
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)">
+            <div class="t" style="font-size:13px;margin-bottom:2px;color:var(--rose)">Danger zone</div>
+            <div class="d" style="font-size:11px;color:var(--muted);margin-bottom:8px">Removes every IPO from this device and the server. Export a backup first.</div>
+            <button class="btn btn-sm" id="clearAll" style="color:var(--rose);border-color:#E7B3AC">Delete everything</button>
+          </div>
         </div>
       </div>
       <footer>
@@ -944,6 +949,16 @@
     };
     rd.readAsText(file);
   }
+  async function clearAll(){
+    if(!confirm("Delete ALL IPOs from this device and the server? This cannot be undone. Export a backup first if unsure."))return;
+    state.ipos=[]; state.updatedAt=Date.now();
+    try{localStorage.setItem(KEY,JSON.stringify({ipos:[],settings:state.settings,
+      threshold:state.threshold,updatedAt:state.updatedAt}))}catch(e){}
+    if(apiBase()){try{await fetch(apiBase()+"/state",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ipos:[],settings:state.settings,threshold:state.threshold,updatedAt:state.updatedAt})});}catch(e){}}
+    render();closeSettings();toast("All data deleted");
+  }
 
   // ---------- events ----------
   $("#typeSeg").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;
@@ -981,6 +996,7 @@
   $("#exportBackup").addEventListener("click",exportBackup);
   $("#importBackup").addEventListener("click",function(){$("#backupFile").click()});
   $("#backupFile").addEventListener("change",function(){if(this.files[0])importBackup(this.files[0])});
+  $("#clearAll").addEventListener("click",clearAll);
   $("#importCsv").addEventListener("click",openImport);
   $("#impClose").addEventListener("click",closeImport);
   $("#impCancel").addEventListener("click",closeImport);
