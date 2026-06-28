@@ -316,8 +316,8 @@ def yahoo_summary(symbol, suffix):
         return None
 
 
-def get_detail(symbol):
-    cached = _cache_get(f"detail:{symbol.upper()}")
+def get_detail(symbol, screener=None):
+    cached = _cache_get(f"detail:{symbol.upper()}:{(screener or '').upper()}")
     if cached is not None:
         return cached
     out = {"symbol": symbol.upper()}
@@ -352,8 +352,8 @@ def get_detail(symbol):
         "currency": pr.get("currency", "INR"),
     })
 
-    # 3) Screener.in — India ke liye behtar (market cap ₹Cr, ROE/ROCE, promoter holding)
-    sc = scrape_screener(symbol) or {}
+    # 3) Screener.in — slug Yahoo symbol se alag ho sakta hai
+    sc = scrape_screener(screener or symbol) or {}
     if sc.get("marketCapCr") is not None:
         out["marketCap"] = sc["marketCapCr"] * 1e7        # Cr -> rupees (Yahoo jaisa unit)
     for src, dst in (("pe", "peRatio"), ("bookValue", "bookValue"), ("high", "fiftyTwoWeekHigh"),
@@ -370,7 +370,7 @@ def get_detail(symbol):
     out["shareholding"] = sc.get("shareholding")
     out["shareholdingDate"] = sc.get("shareholdingDate")
     out["hasScreener"] = bool(sc)
-    _cache_set(f"detail:{symbol.upper()}", out)
+    _cache_set(f"detail:{symbol.upper()}:{(screener or '').upper()}", out)
     return out
 
 
@@ -512,9 +512,10 @@ def screener():
 @app.get("/detail")
 def detail():
     symbol = request.args.get("symbol", "").strip()
+    screener = request.args.get("screener", "").strip() or None
     if not symbol:
         return jsonify({"error": "symbol required"}), 400
-    return jsonify(get_detail(symbol))
+    return jsonify(get_detail(symbol, screener))
 
 
 # ---------------------------------------------------------------------------
@@ -558,12 +559,39 @@ def yahoo_search_symbol(name):
     return out
 
 
+def screener_search_slug(name):
+    """Company naam -> Screener slug (price symbol se alag ho sakta hai)."""
+    key = "scrsearch:" + name.lower()
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+    q = re.sub(r"\b(limited|ltd\.?|pvt\.?|private)\b", "", name, flags=re.I).strip(" .,")
+    slug = None
+    try:
+        sess = requests.Session()
+        sess.headers.update(HEADERS)
+        r = sess.get("https://www.screener.in/api/company/search/?q=" + requests.utils.quote(q),
+                     headers={"Referer": "https://www.screener.in/"}, timeout=12)
+        if r.status_code == 200:
+            arr = r.json()
+            if isinstance(arr, list) and arr:
+                m = re.search(r"/company/([^/]+)/", arr[0].get("url", ""))
+                if m:
+                    slug = m.group(1)
+    except (requests.RequestException, ValueError):
+        pass
+    _cache_set(key, slug)
+    return slug
+
+
 @app.get("/resolve")
 def resolve():
     name = request.args.get("name", "").strip()
     if not name:
         return jsonify({"error": "name required"}), 400
-    return jsonify(yahoo_search_symbol(name))
+    out = dict(yahoo_search_symbol(name) or {"symbol": None})
+    out["screener"] = screener_search_slug(name)
+    return jsonify(out)
 
 
 @app.get("/health")
