@@ -605,6 +605,7 @@
   }
   async function pushState(){
     if(!apiBase())return;
+    if(!state.ipos.length)return;   // khaali data kabhi server pe push na ho (safety)
     try{
       await fetch(apiBase()+"/state",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ipos:state.ipos,settings:state.settings,
@@ -612,22 +613,20 @@
     }catch(e){}
   }
   async function pullState(){
-    if(!apiBase())return;
+    if(!apiBase())return false;
     try{
       var r=await fetch(apiBase()+"/state",{cache:"no-store"});
       var d=await r.json();
-      if(d&&d.ok&&d.state&&d.state.ipos&&(d.state.updatedAt||0)>(state.updatedAt||0)){
-        applyingRemote=true;
+      if(d&&d.ok&&d.state&&d.state.ipos&&d.state.ipos.length&&
+         (state.ipos.length===0 || (d.state.updatedAt||0)>(state.updatedAt||0))){
         state.ipos=d.state.ipos;
         if(d.state.settings)state.settings=Object.assign(state.settings,d.state.settings);
         if(d.state.threshold!=null)state.threshold=d.state.threshold;
-        state.updatedAt=d.state.updatedAt;
-        $("#thresh").value=state.threshold;$("#threshVal").textContent=state.threshold+"%";
-        render();
-        applyingRemote=false;
-        toast("Synced latest data from server");
+        state.updatedAt=d.state.updatedAt||Date.now();
+        return true;
       }
     }catch(e){}
+    return false;
   }
 
   async function testConnection(url){
@@ -989,10 +988,14 @@
   // ---------- boot ----------
   $("#threshVal").textContent=state.threshold+"%";
   $("#thresh").value=state.threshold;
-  render();
   reflectApiState();
-  pullState();
-  setupAuto();
+  (async function(){
+    var pulled=await pullState();          // pehle server se data lo (agar ho)
+    if(pulled){$("#thresh").value=state.threshold;$("#threshVal").textContent=state.threshold+"%";
+      toast("Synced data from server");}
+    render();
+    setupAuto();
+  })();
 })();
 </script>
 </body>
