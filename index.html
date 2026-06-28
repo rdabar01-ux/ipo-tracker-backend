@@ -985,7 +985,7 @@
     var needMarket=sym&&apiBase();
     $("#detBody").innerHTML=ipoSection(o)+(needMarket?marketSection("loading",o):
       '<div class="dsec"><h3>Market</h3><div class="dnote">'+(sym?'Connect your API to load market data.':'Add an NSE symbol (Edit) to load market cap, 52-week range, shareholding, etc.')+'</div>'+
-      (slug(o)?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(slug(o))+'/">Open on Screener ↗</a>':'')+'</div>')+companySection(null,o);
+      (slug(o)?'<a class="dlink" target="_blank" rel="noopener" href="https://www.screener.in/company/'+encodeURIComponent(slug(o))+'/">Open on Screener ↗</a>':'')+'</div>');
     $("#detScrim").classList.add("open");
     if(needMarket){
       var d=null;
@@ -998,7 +998,7 @@
         if(d.location&&!o.location){o.location=d.location;ch=true;}
         if(ch)save();}
       if($("#detTitle").textContent===o.name)
-        $("#detBody").innerHTML=ipoSection(o)+marketSection(d,o)+companySection(d,o);
+        $("#detBody").innerHTML=ipoSection(o)+marketSection(d,o);
     }
   }
   function closeDetail(){$("#detScrim").classList.remove("open")}
