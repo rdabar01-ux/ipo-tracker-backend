@@ -84,6 +84,7 @@
   .leadsel{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 11px;
     font-size:12.5px;color:var(--ink);font-family:var(--sans);outline:none;max-width:190px}
   .leadsel:focus{border-color:var(--brand)}
+  .excl.on{background:var(--rose-bg);color:var(--rose);border-color:#E7B3AC}
 
   /* table */
   .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
@@ -267,6 +268,7 @@
       </div>
       <select id="industryFilter" class="leadsel"><option value="all">All industries</option></select>
       <select id="locationFilter" class="leadsel"><option value="all">All locations</option></select>
+      <button class="btn excl" id="excludeGI" title="Hide IPOs based in Gujarat or Indore">Exclude GJ / Indore</button>
       <div class="search">
         <span style="color:var(--muted)">⌕</span>
         <input id="search" placeholder="Search company or symbol" />
@@ -474,7 +476,7 @@
     settings: Object.assign({apiUrl:"https://ipo-cross-tracker-api.onrender.com",auto:false,interval:60},saved.settings||{}),
     threshold: saved.threshold!=null?saved.threshold:3,
     updatedAt: saved.updatedAt||0,
-    filters:{type:"all",status:"all",search:"",industry:"all",location:"all"},
+    filters:{type:"all",status:"all",search:"",industry:"all",location:"all",excludeGI:false},
     sort:{key:"listingDate",dir:-1}
   };
   var autoTimer=null, editingId=null;
@@ -605,6 +607,7 @@
       else if(f.status!=="all"&&status(o)!==f.status) return false;
       if(f.industry!=="all"&&o.industry!==f.industry) return false;
       if(f.location!=="all"&&o.location!==f.location) return false;
+      if(f.excludeGI&&isGIbased(o)) return false;
       if(f.search){var q=f.search.toLowerCase();
         if((o.name||"").toLowerCase().indexOf(q)<0 &&
            (o.symbol||"").toLowerCase().indexOf(q)<0 &&
@@ -630,6 +633,14 @@
       return av<bv?-1*dir:av>bv?1*dir:0;
     });
     return list;
+  }
+
+  var GI_KEYWORDS=["gujarat","ahmedabad","surat","vadodara","baroda","rajkot","gandhinagar",
+    "bhavnagar","jamnagar","anand","nadiad","mehsana","morbi","valsad","bharuch","navsari","indore"];
+  function isGIbased(o){
+    var loc=(o.location||"").toLowerCase();
+    if(!loc)return false;
+    return GI_KEYWORDS.some(function(k){return loc.indexOf(k)>=0});
   }
 
   function render(){
@@ -1032,6 +1043,9 @@
   $("#statusSeg").addEventListener("click",function(e){var b=e.target.closest("button");if(!b)return;
     state.filters.status=b.dataset.status;
     [].forEach.call(this.children,function(c){c.classList.toggle("on",c===b)});render()});
+  $("#excludeGI").addEventListener("click",function(){
+    state.filters.excludeGI=!state.filters.excludeGI;
+    this.classList.toggle("on",state.filters.excludeGI);render();});
   $("#industryFilter").addEventListener("change",function(){state.filters.industry=this.value;render()});
   $("#locationFilter").addEventListener("change",function(){state.filters.location=this.value;render()});
   $("#search").addEventListener("input",function(){state.filters.search=this.value;render()});

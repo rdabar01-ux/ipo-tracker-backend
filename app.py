@@ -525,7 +525,8 @@ def get_profile(symbol):
         if ap:
             out["industry"] = ap.get("industry")
             out["sector"] = ap.get("sector")
-            out["location"] = ", ".join([x for x in [ap.get("city"), ap.get("country")] if x]) or None
+            parts = [x for x in [ap.get("city"), ap.get("state")] if x]
+            out["location"] = ", ".join(parts) or ap.get("country")
             break
     _cache_set(key, out)
     return out
